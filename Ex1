@@ -15,11 +15,15 @@ for x in range(0, len(num)):
     try:
          int(num[x], 16)
     except ValueError:
-        sum += int(num[temp + 1:x], 16)
+        sum += int(num[temp+1:x], 16)
         temp = x
+try:
+    sum += int(num[temp+1:len(num)], 16)
+except ValueError:
+    sum = sum
 
-sum += int(num[temp+1:len(num)], 16)
 print(sum)
+
 #3 -
 num = int(input("type number"))
 counter, sum = 1, num
