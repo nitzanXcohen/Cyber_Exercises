@@ -1,179 +1,143 @@
+#1 without multithreading
 import random
+import time
+
+start = time.time()
 
 for i in range(10):
-    with open(f"file{i}.txt", "w") as f:
-        for _ in range(100_000):
+    with open(f"file_{i}.txt", "w") as f:
+        for j in range(100000):
             f.write(str(random.randint(1, 1000)) + "\n")
-numbers = []
-for i in range(10):
-    with open(f"file{i}.txt", "r") as f:
-        numbers += [int(x) for x in f.readlines()]
-average = sum(numbers) / len(numbers)
-print(average)
 
-#2
+end = time.time()
+print(f"Time taken to create files: {end - start:.2f} seconds")
+
+start = time.time()
+
+sum = 0
+count = 0
+for i in range(10):
+    with open(f"file_{i}.txt", "r") as f:
+        for line in f:
+            sum += int(line)
+            count += 1
+
+average = sum / count
+
+end = time.time()
+print(f"Time taken to calculate average: {end - start:.2f} seconds")
+
+
+#1 with multithreading
 import random
+import time
 import threading
-average = 0
-lock = threading.Lock()
-def create_file(i):
-    with open(f"file{i}.txt", "w") as f:
-        for _ in range(100_000):
-            f.write(str(random.randint(1, 1000)) + "\n")
 
-def calculate_average(numbers):
-    global average
-    with lock:
-        average += sum(numbers)
+start = time.time()
+
+
+def create_files(i):
+    with open(f"file_{i}.txt", "w") as f:
+        for j in range(100000):
+            f.write(str(random.randint(1, 1000)) + "\n")
 
 threads = []
-
 for i in range(10):
-    t = threading.Thread(target=create_file, args=(i,))
+    thread = threading.Thread(target=create_files, args=(i,))
+    thread.start()
+    threads.append(thread)
+
+for thread in threads:
+    thread.join()
+
+end = time.time()
+print(f"Time taken to create files: {end - start:.2f} seconds")
+
+start = time.time()
+
+
+sum = 0
+count = 0
+def calculate_average(i):
+    nonlocal sum, count
+    with open(f"file_{i}.txt", "r") as f:
+        for line in f:
+            sum += int(line)
+            count += 1
+
+threads = []
+for i in range(10):
+    thread = threading.Thread(target=calculate_average, args=(i,))
+    thread.start()
+    threads.append(thread)
+
+for thread in threads:
+    thread.join()
+
+average = sum / count
+
+end = time.time()
+print(f"Time taken to calculate average: {end - start:.2f} seconds")
+
+
+#2 with and without multithreading
+import random
+import time
+import threading
+
+def calculate_amounts(filename):
+    with open(filename, 'w') as f:
+        for i in range(100000):
+            number = str(random.randint(1, 1000))
+            f.write(number + '\n')
+    with open(filename, 'r') as f:
+        values = [int(line.strip()) for line in f]
+    sum_values = sum(values)
+    sum_first_digits = sum([int(str(value)[0]) for value in values])
+    sum_last_digits = sum([int(str(value)[-1]) for value in values])
+    print(f'Sum of all values: {sum_values}')
+    print(f'Sum of all first digits: {sum_first_digits}')
+    print(f'Sum of all last digits: {sum_last_digits}')
+
+def calculate_amounts_threaded(filename):
+    t = threading.Thread(target=calculate_amounts, args=(filename,))
     t.start()
-    threads.append(t)
-for t in threads:
     t.join()
-threads = []
-for i in range(10):
-    with open(f"file{i}.txt", "r") as f:
-        numbers = [int(x) for x in f.readlines()]
-        t = threading.Thread(target=calculate_average, args=(numbers,))
-        t.start()
-        threads.append(t)
-for t in threads:
-    t.join()
-average = average / (10*100_000)
-print(average)
 
-#3
-import random
+if __name__ == '__main__':
+    filename = 'numbers.txt'
+    start_time = time.time()
+    calculate_amounts(filename)
+    print(f'Time without multithreading: {time.time() - start_time:.2f} seconds')
+    start_time = time.time()
+    calculate_amounts_threaded(filename)
+    print(f'Time with multithreading: {time.time() - start_time:.2f} seconds')
 
-with open("numbers.txt", "w") as f:
-    for _ in range(100_000):
-        f.write(str(random.randint(1, 1000)) + "\n")
-
-with open("numbers.txt", "r") as f:
-    numbers = [int(x) for x in f.readlines()]
-    all_sum = sum(numbers)
-    first_sum = sum([int(x[0]) for x in numbers])
-    last_sum = sum([int(x[-1]) for x in numbers])
-print("All sum:", all_sum)
-print("First sum:", first_sum)
-print("Last sum:", last_sum)
-
-#4
-
-import random
+#3 with and without multithreading
+import matplotlib.pyplot as plt
+import numpy as np
+import time
 import threading
 
-all_sum = 0
-first_sum = 0
-last_sum = 0
-lock = threading.Lock()
+def draw_graph(x_values, y_values):
+    plt.plot(x_values, y_values)
+    plt.show()
 
-def create_file():
-    with open("numbers.txt", "w") as f:
-        for _ in range(100_000):
-            f.write(str(random.randint(1, 1000)) + "\n")
+def draw_graph_threaded(x_values, y_values):
+    t = threading.Thread(target=draw_graph, args=(x_values, y_values))
+    t.start()
+    t.join()
 
-def calculate_all_sum(numbers):
-    global all_sum
-    with lock:
-        all_sum += sum(numbers)
+if __name__ == '__main__':
+    x_values = np.linspace(-10, 10, 1000)
+    y_values = (x_values**3 - 6)/(2 - x_values**2)
+    start_time = time.time()
+    draw_graph(x_values, y_values)
+    print(f'Time without multithreading: {time.time() - start_time:.2f} seconds')
+    start_time = time.time()
+    draw_graph_threaded(x_values, y_values)
+    print(f'Time with multithreading: {time.time() - start_time:.2f} seconds')
 
-def calculate_first_sum(numbers):
-    global first_sum
-    with lock:
-        first_sum += sum([int(x[0]) for x in numbers])
-
-def calculate_last_sum(numbers):
-    global last_sum
-    with lock:
-        last_sum += sum([int(x[-1]) for x in numbers])
-
-t = threading.Thread(target=create_file)
-t.start()
-t.join()
-
-with open("numbers.txt", "r") as f:
-    numbers = [int(x) for x in f.readlines()]
-
-t1 = threading.Thread(target=calculate_all_sum, args=(numbers,))
-t2 = threading.Thread(target=calculate_first_sum, args=(numbers,))
-t3 = threading.Thread(target=calculate_last_sum, args=(numbers,))
-t1.start()
-t2.start()
-t3.start()
-
-t1.join()
-t2.join()
-t3.join()
-
-print("All sum:", all_sum)
-print("First sum:", first_sum)
-print("Last sum:", last_sum)
-
-#5 graph without
-import matplotlib.pyplot as plt
-import numpy as np
-
-def f(x):
-    return (x-2)**2/(x**3-6)
-
-x = np.linspace(-10, 10, 100)
-y = f(x)
-
-plt.plot(x, y)
-plt.xlabel('x')
-plt.ylabel('y')
-plt.title('Graph of (x-2)^2/(x^3-6)')
-plt.show()
-
-# with
-import matplotlib.pyplot as plt
-import numpy as np
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
-def f(x):
-    return (x-2)**2/(x**3-6)
-
-x = np.linspace(-10, 10, 100)
-y = []
-
-with ThreadPoolExecutor() as executor:
-    future_to_x = {executor.submit(f, xi): xi for xi in x}
-    for future in as_completed(future_to_x):
-        y.append(future.result())
-
-plt.plot(x, y)
-plt.xlabel('x')
-plt.ylabel('y')
-plt.title('Graph of (x-2)^2/(x^3-6)')
-plt.show()
-
-
-#5 with
-import matplotlib.pyplot as plt
-import numpy as np
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
-def f(x):
-    return (x-2)**2/(x**3-6)
-
-x = np.linspace(-10, 10, 100)
-y = []
-
-with ThreadPoolExecutor() as executor:
-    future_to_x = {executor.submit(f, xi): xi for xi in x}
-    for future in as_completed(future_to_x):
-        y.append(future.result())
-
-plt.plot(x, y)
-plt.xlabel('x')
-plt.ylabel('y')
-plt.title('Graph of (x-2)^2/(x^3-6)')
-plt.show()
 
 #6 deadlock
 import threading
