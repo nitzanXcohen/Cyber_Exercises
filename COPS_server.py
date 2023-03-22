@@ -1,183 +1,144 @@
-import random
 import socket
-import sys
+import random
 
 
-class Arena:
-    WALL = True
-    PATH = False
-    TREASURE = 'X'
-    THIEF = 'T'
-    COP = 'C'
-    BORDER = '*'
-    ARROWS = ['up', 'down', 'left', 'right']
+class GameMap:
+    def __init__(self, file_path):
+        self.map_table = self.load_map(file_path)
+        self.thief_loc, self.cop_loc, self.treasure_loc = self.get_random_free_location(), self.get_random_free_location(), self.get_random_free_location()
+        self.running = True
 
-    def __init__(self, filename):
-        self.filename = filename
-        self.load_arena()
-        self.place_players()
+    def load_map(self, file_path):
+        with open(file_path, 'rb') as f:
+            map_bytes = f.read()
+        map_size = int(map_bytes[0])
+        map_data = [[int(c) for c in map_bytes[n:n + map_size]] for n in range(1, len(map_bytes), map_size)]
+        return map_data
 
-    def load_arena(self):
-        with open(self.filename, 'rb') as f:
-            self.width = int.from_bytes(f.read(1), byteorder='little')
-            self.height = int.from_bytes(f.read(1), byteorder='little')
-            self.grid = [[False for j in range(self.width)] for i in range(self.height)]
-            for i in range(self.height):
-                for j in range(self.width):
-                    self.grid[i][j] = bool(f.read(1)[0])
+    def get_random_free_location(self):
+        while True:
+            x, y = random.randint(0, len(self.map_table) - 1), random.randint(0, len(self.map_table[0]) - 1)
+            if self.is_free_location([x, y]):
+                return [x, y]
 
-    def place_players(self):
-        self.thief_pos = self.place_randomly()
-        self.cop_pos = self.place_randomly()
-        while self.cop_pos == self.thief_pos:
-            self.cop_pos = self.place_randomly()
-        self.treasure_pos = self.place_randomly()
-        while self.treasure_pos == self.cop_pos or self.treasure_pos == self.thief_pos:
-            self.treasure_pos = self.place_randomly()
-
-    def place_randomly(self):
-        i = random.randint(0, self.height - 1)
-        j = random.randint(0, self.width - 1)
-        while self.grid[i][j] == self.WALL:
-            i = random.randint(0, self.height - 1)
-            j = random.randint(0, self.width - 1)
-        return (i, j)
+    def is_free_location(self, loc):
+        if loc[0] < 0 or loc[0] >= len(self.map_table) or loc[1] < 0 or loc[1] >= len(self.map_table[0]):
+            return False
+        if self.map_table[loc[0]][loc[1]] != 0:
+            return False
+        if loc == self.thief_loc or loc == self.cop_loc or loc == self.treasure_loc:
+            return False
+        return True
 
     def move_thief(self, direction):
-        new_pos = self.get_new_pos(self.thief_pos, direction)
-        if self.is_valid_pos(new_pos):
-            self.thief_pos = new_pos
+        if not self.running:
+            return None
+
+        wall = False
+        if direction == 'UP':
+            new_loc = [self.thief_loc[0] - 1, self.thief_loc[1]]
+        elif direction == 'DOWN':
+            new_loc = [self.thief_loc[0] + 1, self.thief_loc[1]]
+        elif direction == 'LEFT':
+            new_loc = [self.thief_loc[0], self.thief_loc[1] - 1]
+        elif direction == 'RIGHT':
+            new_loc = [self.thief_loc[0], self.thief_loc[1] + 1]
         else:
-            print('Cannot move in that direction')
+            return 'INVALID'
+
+        if not self.is_free_location(new_loc):
+            wall = True
+        else:
+            self.thief_loc = new_loc
+
+        if self.thief_loc == self.treasure_loc:
+            self.running = False
+            return 'WON'
+        elif self.thief_loc == self.cop_loc:
+            self.running = False
+            return 'LOSE'
+        else:
+            self.move_cop()
+            if self.thief_loc == self.cop_loc:
+                self.running = False
+                return 'LOSE'
+            elif wall:
+                return 'WALL'
+            else:
+                return 'OK'
 
     def move_cop(self):
-        direction = random.choice(self.ARROWS + ['stay'])
-        new_pos = self.get_new_pos(self.cop_pos, direction)
-        if self.is_valid_pos(new_pos):
-            self.cop_pos = new_pos
+        possible_moves = []
+        for a in [-1, 0, 1]:
+            for b in [-1, 0, 1]:
+                if a == 0 and b == 0:
+                    continue
+                new_loc = [self.cop_loc[0] + a, self.cop_loc[1] + b]
+                if self.is_free_location(new_loc):
+                    possible_moves.append(new_loc)
+        if not possible_moves:
+            return
+        self.cop_loc = random.choice(possible_moves)
 
-    def get_new_pos(self, pos, direction):
-        i, j = pos
-        if direction == 'up':
-            i -= 1
-        elif direction == 'down':
-            i += 1
-        elif direction == 'left':
-            j -= 1
-        elif direction == 'right':
-            j += 1
-        return (i, j)
-
-    def is_valid_pos(self, pos):
-        i, j = pos
-        if i < 0 or j < 0 or i >= self.height or j >= self.width:
-            return False
-        return not self.grid[i][j]
-
-    def is_game_over(self):
-        return self.thief_pos == self.treasure_pos or self.thief_pos == self.cop_pos
-
-    def get_status(self):
-        cop_distance = self.get_distance(self.thief_pos, self.cop_pos)
-        treasure_distance = self.get_distance(self.thief_pos, self.treasure_pos)
-        if cop_distance == 1:
-            return "You are one step away from the cop"
-        elif treasure_distance == 1:
-            return "You are one step away from the treasure"
-        else:
-            return ""
-
-    def get_distance(self, pos1, pos2):
-        return abs(pos1[0] - pos2[0]) + abs(pos1[1] - pos2[1])
 
     def __str__(self):
-        output = ''
-        for i in range(self.height):
-            for j in range(self.width):
-                if self.grid[i][j] == self.WALL:
-                    output += self.BORDER
-                elif (i, j) == self.thief_pos:
-                    output += self.THIEF
-                elif (i, j) == self.cop_pos:
-                    output += self.COP
-                elif (i, j) == self.treasure_pos:
-                    output += self.TREASURE
-                else:
-                    output += self.PATH
-            output += '\n'
-        return output
+        str_table = [[str(a).replace('0', ' ').replace('1', '*') for a in r] for r in self.map_table]
+        str_table[self.cop_loc[0]][self.cop_loc[1]] = 'C'
+        str_table[self.thief_loc[0]][self.thief_loc[1]] = 'T'
+        str_table[self.treasure_loc[0]][self.treasure_loc[1]] = 'X'
+        txt = ''
+        for r in str_table:
+            for l in r:
+                txt += l
+            txt += '\n'
+        return txt[:-1]
 
-    def handle_status_report(self):
-        distance_to_cop = self.get_distance(self.thief_pos, self.cop_pos)
-        distance_to_treasure = self.get_distance(self.thief_pos, self.treasure_pos)
+    def status(self):
+        print(self)
+        if self._near(self.thief_loc, self.cop_loc):
+            return 'COP NEAR'
+        if self._near(self.thief_loc, self.treasure_loc):
+            return 'TREASURE NEAR'
+        return 'GAME ON'
 
-        if distance_to_cop == 1:
-            print('Thief is one step away from cop')
-        elif distance_to_treasure == 0:
-            print('Thief has reached the treasure!')
-            return
-
-        if distance_to_treasure == 1:
-            print('Thief is one step away from the treasure')
-
-        # Print current state of the arena
-        for i in range(self.height):
-            for j in range(self.width):
-                if (i, j) == self.thief_pos:
-                    print(self.THIEF, end='')
-                elif (i, j) == self.cop_pos:
-                    print(self.COP, end='')
-                elif (i, j) == self.treasure_pos:
-                    print(self.TREASURE, end='')
-                elif self.grid[i][j] == self.WALL:
-                    print(self.BORDER, end='')
-                else:
-                    print(self.PATH, end='')
-            print()
+    @staticmethod
+    def _near(loc1, loc2):
+        if loc1[0] == loc2[0] and abs(loc1[1] - loc2[1]) == 1:
+            return True
+        if loc1[1] == loc2[1] and abs(loc1[0] - loc2[0]) == 1:
+            return True
+        return False
 
 
-def start_game(self):
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-    server_address = ('127.0.0.1', 12345)
-    print(f'starting up on {server_address[0]} port {server_address[1]}')
-    sock.bind(server_address)
+#Server
+MAP_PATH = '"D:\הורדות\pacman.bin"'
+PORT = 12345
 
-    sock.listen(1)
-    print('waiting for a connection...')
-
+def handle_client_connection(client_socket):
+    map = GameMap(MAP_PATH)
     while True:
-        connection, client_address = sock.accept()
-        print(f'connection from {client_address}')
+        command = client_socket.recv(128).decode()
+        if command == 'STATUS':
+            client_socket.send(map.status().encode())
+        else:
+            side = command[5:]
+            try:
+                ans = map.move_player(side)
+            except Exception as e:
+                print(f"Error: {e}")
+                break
+            else:
+                client_socket.send(ans.encode())
 
-        try:
-            arena = Arena('arena.dat')
-            print(arena)
+def main():
+    s = socket.socket()
+    s.bind(('', PORT))
+    s.listen(5)
+    while True:
+        client_socket, address = s.accept()
+        handle_client_connection(client_socket)
 
-            while not arena.is_game_over():
-                move = connection.recv(1024).decode()
-                print(f'received "{move}" from {client_address}')
-
-                if move == 'up' or move == 'down' or move == 'left' or move == 'right':
-                    arena.move_thief(move)
-                elif move == 'stay':
-                    pass
-                else:
-                    print(f'invalid move "{move}"')
-
-                arena.move_cop()
-                status = arena.get_status()
-                connection.sendall(status.encode())
-                arena.handle_status_report()
-
-            if arena.thief_pos == arena.treasure_pos:
-                print('You have reached the treasure!')
-                connection.sendall(b'You have reached the treasure!')
-            elif arena.thief_pos == arena.cop_pos:
-                print('You have been caught by the cop!')
-                connection.sendall(b'You have been caught by the cop!')
-
-        finally:
-            # Clean up the connection
-            connection.close()
+if __name__ == '__main__':
+    main()
 
